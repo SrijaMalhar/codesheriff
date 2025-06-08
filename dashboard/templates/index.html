@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeSheriff — Review Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      min-height: 100vh;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────────── */
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #161b22;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }
+    header span.badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: #238636;
+      color: #fff;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+    }
+    header .subtitle {
+      margin-left: auto;
+      font-size: 0.8rem;
+      color: #8b949e;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    /* ── Stat cards ───────────────────────────────────────────────── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+    }
+    .stat-card .label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8b949e;
+      margin-bottom: 0.45rem;
+    }
+    .stat-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat-card .value.red    { color: #f85149; }
+    .stat-card .value.yellow { color: #d29922; }
+    .stat-card .value.blue   { color: #388bfd; }
+    .stat-card .value.green  { color: #3fb950; }
+
+    /* ── Chart grid ───────────────────────────────────────────────── */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+    }
+    @media (max-width: 820px) { .chart-grid { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+    }
+    .chart-card h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #8b949e;
+      margin-bottom: 1rem;
+    }
+    .chart-wrap { position: relative; height: 220px; }
+
+    /* ── Recent reviews table ─────────────────────────────────────── */
+    .table-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+    }
+    .table-card h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #8b949e;
+      margin-bottom: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th {
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      color: #8b949e;
+      border-bottom: 1px solid #30363d;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.6rem 0.75rem;
+      border-bottom: 1px solid #21262d;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    .pill {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .pill.shadow   { background: #30363d; color: #e6edf3; }
+    .pill.live     { background: #1f6feb; color: #fff; }
+    .pill.completed{ background: #1a7f37; color: #fff; }
+    .pill.pending  { background: #9e6a03; color: #fff; }
+    .pill.failed   { background: #b62324; color: #fff; }
+
+    /* ── Empty / error state ──────────────────────────────────────── */
+    .empty {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #8b949e;
+      font-size: 0.9rem;
+    }
+
+    /* ── Shadow-mode banner ───────────────────────────────────────── */
+    #shadow-banner {
+      display: none;
+      background: #2d1b00;
+      border: 1px solid #d29922;
+      border-radius: 8px;
+      padding: 0.75rem 1.2rem;
+      font-size: 0.82rem;
+      color: #d29922;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Filter bar ──────────────────────────────────────────────── */
+    #filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+    }
+    #filter-bar input[type="text"],
+    #filter-bar input[type="date"],
+    #filter-bar select {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 0.8rem;
+      padding: 0.3rem 0.6rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    #filter-bar input[type="text"] { width: 160px; }
+    #filter-bar input[type="date"] { width: 130px; color-scheme: dark; }
+    #filter-bar input:focus,
+    #filter-bar select:focus { border-color: #388bfd; }
+    #filter-bar label {
+      font-size: 0.72rem;
+      color: #8b949e;
+      white-space: nowrap;
+    }
+    #filter-group {
+      display: flex; align-items: center; gap: 0.35rem; flex-wrap: nowrap;
+    }
+    #filter-clear {
+      background: none; border: 1px solid #30363d; border-radius: 6px;
+      color: #8b949e; font-size: 0.78rem; padding: 0.3rem 0.7rem;
+      cursor: pointer; transition: background 0.15s, color 0.15s;
+    }
+    #filter-clear:hover { background: #21262d; color: #e6edf3; }
+    #filter-count {
+      font-size: 0.72rem; color: #8b949e; margin-left: auto;
+    }
+
+    /* ── Payload viewer modal ────────────────────────────────────── */
+    #payload-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      z-index: 200;
+    }
+    #payload-modal {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      opacity: 0;
+      transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), opacity 0.18s;
+      width: min(760px, 95vw);
+      max-height: 80vh;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      z-index: 201;
+      display: flex;
+      flex-direction: column;
+    }
+    #payload-modal.open {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    #payload-modal-header {
+      padding: 0.9rem 1.2rem;
+      border-bottom: 1px solid #30363d;
+      display: flex; align-items: center; gap: 0.65rem;
+    }
+    #payload-modal-header h3 { font-size: 0.95rem; font-weight: 700; flex: 1; margin: 0; }
+    #payload-copy {
+      background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+      color: #c9d1d9; font-size: 0.75rem; padding: 0.25rem 0.65rem;
+      cursor: pointer; transition: background 0.15s;
+    }
+    #payload-copy:hover { background: #388bfd; border-color: #388bfd; color: #fff; }
+    #payload-copy.copied { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+    #payload-modal-close {
+      background: none; border: none; color: #8b949e;
+      font-size: 1.2rem; cursor: pointer; padding: 0.2rem 0.35rem;
+      border-radius: 4px; line-height: 1;
+    }
+    #payload-modal-close:hover { background: #30363d; color: #e6edf3; }
+    #payload-body {
+      flex: 1; overflow-y: auto;
+      padding: 0.9rem 1.2rem 1.2rem;
+    }
+    #payload-code {
+      margin: 0;
+      font-family: 'Consolas', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.75rem;
+      line-height: 1.6;
+      color: #c9d1d9;
+      white-space: pre;
+      word-break: break-all;
+    }
+    .btn-payload {
+      background: none;
+      border: 1px solid #30363d;
+      border-radius: 5px;
+      color: #8b949e;
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      white-space: nowrap;
+    }
+    .btn-payload:hover { background: #21262d; color: #e6edf3; border-color: #8b949e; }
+
+    /* ── Outcome pills (event log) ───────────────────────────────── */
+    .pill.queued   { background: #1a7f37; color: #fff; }
+    .pill.ignored  { background: #30363d; color: #8b949e; }
+    .pill.rejected { background: #b62324; color: #fff; }
+    .pill.error    { background: #b62324; color: #fff; }
+    .event-link { color: #58a6ff; text-decoration: none; }
+    .event-link:hover { text-decoration: underline; }
+    code.sha {
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: 0.75rem; color: #8b949e;
+      background: #21262d; border-radius: 4px;
+      padding: 0.05rem 0.3rem;
+    }
+
+    /* ── Sortable column headers ──────────────────────────────────── */
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    th.sortable:hover { color: #e6edf3; }
+    th.sortable::after {
+      content: ' ⇅';
+      opacity: 0.35;
+      font-size: 0.7em;
+    }
+    th.sort-asc::after  { content: ' ↑'; opacity: 1; color: #58a6ff; }
+    th.sort-desc::after { content: ' ↓'; opacity: 1; color: #58a6ff; }
+
+    /* ── Clickable table rows ─────────────────────────────────────── */
+    tbody tr { cursor: pointer; transition: background 0.1s; }
+    tbody tr:hover { background: #1c2128; }
+
+    /* ── Detail panel (slide-in from right) ──────────────────────── */
+    #detail-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 100;
+    }
+    #detail-panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(680px, 100vw);
+      background: #161b22;
+      border-left: 1px solid #30363d;
+      z-index: 101;
+      display: flex;
+      flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.22s cubic-bezier(0.4,0,0.2,1);
+    }
+    #detail-panel.open { transform: translateX(0); }
+    #detail-header {
+      padding: 1.1rem 1.4rem;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    #detail-header h3 { font-size: 1rem; font-weight: 700; flex: 1; }
+    #detail-rerun {
+      background: #21262d; border: 1px solid #30363d; color: #c9d1d9;
+      font-size: 0.78rem; font-weight: 600; cursor: pointer;
+      padding: 0.3rem 0.75rem; border-radius: 6px;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    #detail-rerun:hover:not(:disabled) { background: #388bfd; border-color: #388bfd; color: #fff; }
+    #detail-rerun:disabled { opacity: 0.45; cursor: not-allowed; }
+    #detail-rerun.running { background: #9e6a03; border-color: #9e6a03; color: #fff; }
+    #detail-rerun.success { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+    #detail-rerun.error   { background: #b62324; border-color: #b62324; color: #fff; }
+    #detail-close {
+      background: none; border: none; color: #8b949e;
+      font-size: 1.3rem; cursor: pointer; line-height: 1;
+      padding: 0.2rem 0.4rem; border-radius: 4px;
+    }
+    #detail-close:hover { background: #30363d; color: #e6edf3; }
+    #detail-meta {
+      padding: 0.9rem 1.4rem;
+      border-bottom: 1px solid #21262d;
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      font-size: 0.78rem; color: #8b949e;
+    }
+    #detail-meta span { display: flex; align-items: center; gap: 0.3rem; }
+    #detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 1.4rem 2rem;
+    }
+    .finding-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 0.9rem 1.1rem;
+      margin-bottom: 0.7rem;
+    }
+    .finding-card:last-child { margin-bottom: 0; }
+    .finding-top {
+      display: flex; align-items: center; gap: 0.55rem;
+      margin-bottom: 0.5rem; flex-wrap: wrap;
+    }
+    .finding-file {
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: 0.78rem;
+      color: #58a6ff;
+      flex: 1;
+      word-break: break-all;
+    }
+    .finding-line {
+      font-size: 0.7rem; color: #8b949e;
+      background: #21262d; border-radius: 4px;
+      padding: 0.1rem 0.4rem; white-space: nowrap;
+    }
+    .sev-error   { color: #f85149; }
+    .sev-warning { color: #d29922; }
+    .sev-info    { color: #388bfd; }
+    .finding-suggestion {
+      font-size: 0.82rem;
+      color: #c9d1d9;
+      line-height: 1.55;
+    }
+    .finding-source {
+      font-size: 0.68rem;
+      color: #8b949e;
+      margin-top: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    #detail-empty {
+      text-align: center; padding: 3rem 1rem;
+      color: #8b949e; font-size: 0.85rem;
+    }
+    #detail-loading {
+      text-align: center; padding: 3rem 1rem;
+      color: #8b949e; font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🤠</span>
+  <h1>CodeSheriff</h1>
+  <span class="badge">Live</span>
+  <span class="subtitle" id="last-updated">Loading…</span>
+</header>
+
+<main>
+  <!-- Shadow-mode warning -->
+  <div id="shadow-banner">
+    ⚠️ Shadow mode is active — reviews are logged but <strong>not</strong> posted to GitHub.
+  </div>
+
+  <!-- Stat cards -->
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="label">Total Reviews</div>
+      <div class="value" id="stat-total">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Errors Found</div>
+      <div class="value red" id="stat-errors">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Warnings Found</div>
+      <div class="value yellow" id="stat-warnings">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Shadow Reviews</div>
+      <div class="value blue" id="stat-shadow">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Live Reviews</div>
+      <div class="value green" id="stat-live">—</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="chart-grid">
+    <!-- Timeline -->
+    <div class="chart-card">
+      <h2>Reviews Over Time (Last 30 Days)</h2>
+      <div class="chart-wrap">
+        <canvas id="timelineChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Severity pie -->
+    <div class="chart-card">
+      <h2>Severity Breakdown</h2>
+      <div class="chart-wrap">
+        <canvas id="severityChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mode split (full width) -->
+  <div class="chart-grid" style="grid-template-columns: 1fr 2fr; margin-bottom: 2rem;">
+    <div class="chart-card">
+      <h2>Shadow vs Live</h2>
+      <div class="chart-wrap">
+        <canvas id="modeChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Placeholder for future chart -->
+    <div class="chart-card" style="display:flex;align-items:center;justify-content:center;">
+      <span class="empty">More charts coming soon…</span>
+    </div>
+  </div>
+
+  <!-- Recent reviews table -->
+  <div class="table-card">
+    <h2>Recent Reviews <span style="font-size:0.7rem;color:#8b949e;font-weight:400;text-transform:none;letter-spacing:0">— click any row for full details</span></h2>
+
+    <!-- Filter bar -->
+    <div id="filter-bar">
+      <div id="filter-group">
+        <label for="f-repo">Repo</label>
+        <input type="text" id="f-repo" placeholder="owner/repo…" autocomplete="off">
+      </div>
+      <div id="filter-group">
+        <label for="f-mode">Mode</label>
+        <select id="f-mode">
+          <option value="">All</option>
+          <option value="live">Live</option>
+          <option value="shadow">Shadow</option>
+        </select>
+      </div>
+      <div id="filter-group">
+        <label for="f-status">Status</label>
+        <select id="f-status">
+          <option value="">All</option>
+          <option value="completed">Completed</option>
+          <option value="pending">Pending</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+      <div id="filter-group">
+        <label for="f-from">From</label>
+        <input type="date" id="f-from">
+      </div>
+      <div id="filter-group">
+        <label for="f-to">To</label>
+        <input type="date" id="f-to">
+      </div>
+      <button id="filter-clear">Clear</button>
+      <span id="filter-count"></span>
+    </div>
+
+    <div id="recent-wrap">
+      <div class="empty">Loading reviews…</div>
+    </div>
+  </div>
+
+  <!-- Webhook event log -->
+  <div class="table-card" style="margin-top:2rem">
+    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap">
+      <h2 style="margin:0">Webhook Event Log</h2>
+      <span style="font-size:0.7rem;color:#8b949e;font-weight:400">last 100 events · auto-refreshes</span>
+      <span id="event-count" style="font-size:0.72rem;color:#8b949e;margin-left:auto"></span>
+    </div>
+    <div id="event-wrap">
+      <div class="empty">Loading events…</div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Payload viewer modal ───────────────────────────────────────── -->
+<div id="payload-overlay"></div>
+<div id="payload-modal" role="dialog" aria-modal="true" aria-labelledby="payload-modal-title">
+  <div id="payload-modal-header">
+    <h3 id="payload-modal-title">Raw Payload</h3>
+    <button id="payload-copy" title="Copy JSON to clipboard">Copy</button>
+    <button id="payload-modal-close" title="Close">✕</button>
+  </div>
+  <div id="payload-body">
+    <pre id="payload-code">Loading…</pre>
+  </div>
+</div>
+
+<!-- ── Detail panel ───────────────────────────────────────────────── -->
+<div id="detail-overlay"></div>
+<div id="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+  <div id="detail-header">
+    <h3 id="detail-title">Review Details</h3>
+    <button id="detail-rerun" title="Re-run analysis for this PR">↺ Re-run</button>
+    <button id="detail-close" title="Close">✕</button>
+  </div>
+  <div id="detail-meta"></div>
+  <div id="detail-body">
+    <div id="detail-loading">Loading…</div>
+  </div>
+</div>
+
+<script>
+/* ── Chart.js global defaults ───────────────────────────────────────────── */
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#30363d';
+Chart.defaults.font.family = "'Segoe UI', system-ui, sans-serif";
+
+let timelineChart, severityChart, modeChart;
+
+/* ── Fetch stats and render everything ─────────────────────────────────── */
+async function loadStats() {
+  let data;
+  try {
+    const res = await fetch('/api/stats');
+    data = await res.json();
+  } catch (err) {
+    console.error('Failed to load stats:', err);
+    return;
+  }
+
+  /* ── Stat cards ──────────────────────────────────────────────────────── */
+  const total = (data.mode_split.shadow || 0) + (data.mode_split.live || 0);
+  document.getElementById('stat-total').textContent   = total;
+  document.getElementById('stat-errors').textContent  = data.severity.error   || 0;
+  document.getElementById('stat-warnings').textContent= data.severity.warning || 0;
+  document.getElementById('stat-shadow').textContent  = data.mode_split.shadow || 0;
+  document.getElementById('stat-live').textContent    = data.mode_split.live   || 0;
+  document.getElementById('last-updated').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+
+  /* ── Timeline chart ─────────────────────────────────────────────────── */
+  const tCtx = document.getElementById('timelineChart').getContext('2d');
+  if (timelineChart) timelineChart.destroy();
+  timelineChart = new Chart(tCtx, {
+    type: 'line',
+    data: {
+      labels: data.timeline.labels,
+      datasets: [
+        {
+          label: 'Live',
+          data: data.timeline.live,
+          borderColor: '#3fb950',
+          backgroundColor: 'rgba(63,185,80,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+        },
+        {
+          label: 'Shadow',
+          data: data.timeline.shadow,
+          borderColor: '#388bfd',
+          backgroundColor: 'rgba(56,139,253,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+      },
+    },
+  });
+
+  /* ── Severity donut ──────────────────────────────────────────────────── */
+  const sCtx = document.getElementById('severityChart').getContext('2d');
+  if (severityChart) severityChart.destroy();
+  severityChart = new Chart(sCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Error', 'Warning', 'Info'],
+      datasets: [{
+        data: [
+          data.severity.error   || 0,
+          data.severity.warning || 0,
+          data.severity.info    || 0,
+        ],
+        backgroundColor: ['#f85149', '#d29922', '#388bfd'],
+        borderColor: '#161b22',
+        borderWidth: 3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      cutout: '65%',
+    },
+  });
+
+  /* ── Mode split donut ───────────────────────────────────────────────── */
+  const mCtx = document.getElementById('modeChart').getContext('2d');
+  if (modeChart) modeChart.destroy();
+  modeChart = new Chart(mCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Live', 'Shadow'],
+      datasets: [{
+        data: [
+          data.mode_split.live   || 0,
+          data.mode_split.shadow || 0,
+        ],
+        backgroundColor: ['#3fb950', '#388bfd'],
+        borderColor: '#161b22',
+        borderWidth: 3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom' } },
+      cutout: '65%',
+    },
+  });
+
+  /* ── Recent reviews table ───────────────────────────────────────────── */
+  allReviews = data.recent || [];
+  applyFilters();
+}
+
+/* ── Filter state ───────────────────────────────────────────────────────── */
+let allReviews = [];   // last full dataset from the API
+
+function applyFilters() {
+  const repo   = document.getElementById('f-repo').value.trim().toLowerCase();
+  const mode   = document.getElementById('f-mode').value;
+  const status = document.getElementById('f-status').value;
+  const from   = document.getElementById('f-from').value;   // "YYYY-MM-DD" or ""
+  const to     = document.getElementById('f-to').value;
+
+  const filtered = allReviews.filter(r => {
+    if (repo   && !r.repo.toLowerCase().includes(repo))  return false;
+    if (mode   && r.mode   !== mode)                      return false;
+    if (status && r.status !== status)                    return false;
+    if (from) {
+      const d = r.timestamp.slice(0, 10);   // "YYYY-MM-DD"
+      if (d < from) return false;
+    }
+    if (to) {
+      const d = r.timestamp.slice(0, 10);
+      if (d > to) return false;
+    }
+    return true;
+  });
+
+  renderTable(filtered, allReviews.length);
+}
+
+/* ── Sort state ─────────────────────────────────────────────────────────── */
+let sortCol = 'id';     // which column is active
+let sortDir = 'desc';   // 'asc' | 'desc'
+
+/* Column definitions: key → comparator value extractor */
+const SORT_COLS = {
+  id:             r => r.id,
+  pr:             r => `${r.repo}/${String(r.pr_id).padStart(8, '0')}`,
+  timestamp:      r => r.timestamp,
+  mode:           r => r.mode,
+  status:         r => r.status,
+  findings_count: r => r.findings_count,
+};
+
+function setSort(col) {
+  if (sortCol === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';   // toggle direction
+  } else {
+    sortCol = col;
+    sortDir = col === 'id' || col === 'timestamp' ? 'desc' : 'asc';
+  }
+  applyFilters();
+}
+
+function sortReviews(arr) {
+  const extract = SORT_COLS[sortCol] ?? (r => r.id);
+  return [...arr].sort((a, b) => {
+    const va = extract(a);
+    const vb = extract(b);
+    let cmp = va < vb ? -1 : va > vb ? 1 : 0;
+    if (sortDir === 'desc') cmp = -cmp;
+    return cmp;
+  });
+}
+
+function renderTable(reviews, total) {
+  const wrap  = document.getElementById('recent-wrap');
+  const count = document.getElementById('filter-count');
+
+  /* Update match counter */
+  if (total === 0) {
+    count.textContent = '';
+  } else if (reviews.length === total) {
+    count.textContent = `${total} review${total !== 1 ? 's' : ''}`;
+  } else {
+    count.textContent = `${reviews.length} of ${total}`;
+  }
+
+  if (total === 0) {
+    wrap.innerHTML = '<div class="empty">No reviews yet — webhook events will appear here.</div>';
+    return;
+  }
+
+  if (reviews.length === 0) {
+    wrap.innerHTML = '<div class="empty">No reviews match the current filters.</div>';
+    return;
+  }
+
+  /* Apply sort before rendering */
+  const sorted = sortReviews(reviews);
+
+  /* Build header cells — active column gets an arrow class */
+  function th(label, col) {
+    const active = sortCol === col;
+    const cls = ['sortable', active ? `sort-${sortDir}` : ''].filter(Boolean).join(' ');
+    return `<th class="${cls}" onclick="setSort('${col}')">${label}</th>`;
+  }
+
+  const rows = sorted.map(r => {
+    const ts = new Date(r.timestamp).toLocaleString();
+    return `
+      <tr onclick="openDetail(${r.id})" title="Click to view findings">
+        <td>${r.id}</td>
+        <td><a href="https://github.com/${r.repo}/pull/${r.pr_id}"
+               target="_blank" rel="noopener" style="color:#58a6ff"
+               onclick="event.stopPropagation()">
+            ${r.repo} #${r.pr_id}
+          </a></td>
+        <td>${ts}</td>
+        <td><span class="pill ${r.mode}">${r.mode}</span></td>
+        <td><span class="pill ${r.status}">${r.status}</span></td>
+        <td>${r.findings_count}</td>
+      </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          ${th('#',           'id')}
+          ${th('PR',          'pr')}
+          ${th('Reviewed At', 'timestamp')}
+          ${th('Mode',        'mode')}
+          ${th('Status',      'status')}
+          ${th('Findings',    'findings_count')}
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* Wire up filter inputs — re-filter on every keystroke / change */
+['f-repo'].forEach(id =>
+  document.getElementById(id).addEventListener('input', applyFilters)
+);
+['f-mode', 'f-status', 'f-from', 'f-to'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilters)
+);
+
+/* Clear button resets all controls and re-renders */
+document.getElementById('filter-clear').addEventListener('click', () => {
+  document.getElementById('f-repo').value   = '';
+  document.getElementById('f-mode').value   = '';
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-from').value   = '';
+  document.getElementById('f-to').value     = '';
+  applyFilters();
+});
+
+/* ── Detail panel ───────────────────────────────────────────────────────── */
+const SEV_CLASS = { error: 'sev-error', warning: 'sev-warning', info: 'sev-info' };
+const SEV_ICON  = { error: '🔴', warning: '🟡', info: '🔵' };
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  document.getElementById('detail-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+async function openDetail(id) {
+  _currentReviewId = id;   // keep track for the Re-run button
+
+  /* Show the panel immediately with a loading state */
+  const panel   = document.getElementById('detail-panel');
+  const overlay = document.getElementById('detail-overlay');
+  const title   = document.getElementById('detail-title');
+  const meta    = document.getElementById('detail-meta');
+  const body    = document.getElementById('detail-body');
+
+  title.textContent = `Review #${id}`;
+  meta.innerHTML    = '';
+  body.innerHTML    = '<div id="detail-loading">Loading…</div>';
+
+  overlay.style.display = 'block';
+  panel.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  /* Fetch full review details */
+  let d;
+  try {
+    const res = await fetch(`/api/reviews/${id}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    d = await res.json();
+  } catch (err) {
+    body.innerHTML = `<div id="detail-empty">Failed to load review: ${err.message}</div>`;
+    return;
+  }
+
+  /* ── Meta bar ── */
+  const sha = d.head_sha ? d.head_sha.slice(0, 7) : '—';
+  meta.innerHTML = `
+    <span>📁 <a href="https://github.com/${d.repo}/pull/${d.pr_id}"
+               target="_blank" rel="noopener" style="color:#58a6ff">
+        ${d.repo} #${d.pr_id}</a></span>
+    <span>🔖 <code style="font-size:0.75rem;color:#e6edf3">${sha}</code></span>
+    <span>🕒 ${new Date(d.timestamp).toLocaleString()}</span>
+    <span><span class="pill ${d.mode}">${d.mode}</span></span>
+    <span><span class="pill ${d.status}">${d.status}</span></span>
+    <span>🔍 ${d.findings_count} finding${d.findings_count !== 1 ? 's' : ''}</span>`;
+
+  /* ── Findings list ── */
+  if (!d.findings || d.findings.length === 0) {
+    body.innerHTML = '<div id="detail-empty">No findings recorded for this review.</div>';
+    return;
+  }
+
+  /* Sort: errors first, then warnings, then info */
+  const ORDER = { error: 0, warning: 1, info: 2 };
+  const sorted = [...d.findings].sort(
+    (a, b) => (ORDER[a.severity] ?? 3) - (ORDER[b.severity] ?? 3)
+  );
+
+  body.innerHTML = sorted.map(f => {
+    const icon  = SEV_ICON[f.severity]  ?? '⚪';
+    const cls   = SEV_CLASS[f.severity] ?? '';
+    const sug   = f.suggestion.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `
+      <div class="finding-card">
+        <div class="finding-top">
+          <span class="${cls}" style="font-size:0.9rem">${icon}</span>
+          <span class="finding-file">${f.file}</span>
+          <span class="finding-line">line ${f.line}</span>
+        </div>
+        <div class="finding-suggestion">${sug}</div>
+        <div class="finding-source">source: ${f.source}</div>
+      </div>`;
+  }).join('');
+}
+
+/* ── Re-run button ──────────────────────────────────────────────────────── */
+let _currentReviewId = null;   // tracks which review is open in the panel
+
+const rerunBtn = document.getElementById('detail-rerun');
+
+rerunBtn.addEventListener('click', async () => {
+  if (_currentReviewId === null) return;
+
+  /* Disable and show running state */
+  rerunBtn.disabled = true;
+  rerunBtn.className = 'running';
+  rerunBtn.textContent = '⏳ Running…';
+
+  try {
+    const res = await fetch(`/api/reviews/${_currentReviewId}/rerun`, {
+      method: 'POST',
+    });
+
+    if (res.status === 404) {
+      throw new Error('Review not found');
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+
+    /* Success — show green feedback, then reload the panel after a moment */
+    rerunBtn.className = 'success';
+    rerunBtn.textContent = '✓ Queued!';
+
+    /* Refresh stats table in background */
+    loadStats();
+
+    /* Reload the findings panel after 3 s so the user can see updated results */
+    setTimeout(() => {
+      rerunBtn.disabled = false;
+      rerunBtn.className = '';
+      rerunBtn.textContent = '↺ Re-run';
+      openDetail(_currentReviewId);
+    }, 3000);
+
+  } catch (err) {
+    rerunBtn.className = 'error';
+    rerunBtn.textContent = `✗ ${err.message}`;
+    /* Reset after 4 s */
+    setTimeout(() => {
+      rerunBtn.disabled = false;
+      rerunBtn.className = '';
+      rerunBtn.textContent = '↺ Re-run';
+    }, 4000);
+  }
+});
+
+/* Wire up close button and overlay click */
+document.getElementById('detail-close').addEventListener('click', closeDetail);
+document.getElementById('detail-overlay').addEventListener('click', closeDetail);
+
+/* ── Payload viewer modal ───────────────────────────────────────────────── */
+function openPayload(eventId, label) {
+  const overlay = document.getElementById('payload-overlay');
+  const modal   = document.getElementById('payload-modal');
+  const title   = document.getElementById('payload-modal-title');
+  const code    = document.getElementById('payload-code');
+  const copyBtn = document.getElementById('payload-copy');
+
+  title.textContent = label;
+  code.textContent  = 'Loading…';
+  copyBtn.className = '';
+  copyBtn.textContent = 'Copy';
+
+  overlay.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  /* Trigger open animation on next frame */
+  requestAnimationFrame(() => modal.classList.add('open'));
+
+  fetch(`/api/events/${eventId}/payload`)
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
+    .then(d => {
+      const pretty = JSON.stringify(d.payload, null, 2);
+      code.textContent = pretty;
+    })
+    .catch(err => {
+      code.textContent = `Error: ${err.message}`;
+    });
+}
+
+function closePayload() {
+  const modal   = document.getElementById('payload-modal');
+  const overlay = document.getElementById('payload-overlay');
+  modal.classList.remove('open');
+  /* Hide overlay after transition */
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+  }, 200);
+}
+
+/* Copy to clipboard */
+document.getElementById('payload-copy').addEventListener('click', () => {
+  const text = document.getElementById('payload-code').textContent;
+  if (!text || text === 'Loading…') return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('payload-copy');
+    btn.className = 'copied';
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.className = ''; btn.textContent = 'Copy'; }, 2000);
+  });
+});
+
+document.getElementById('payload-modal-close').addEventListener('click', closePayload);
+document.getElementById('payload-overlay').addEventListener('click', closePayload);
+document.addEventListener('keydown', e => {
+  /* Escape closes the topmost open modal */
+  if (e.key === 'Escape') {
+    if (document.getElementById('payload-modal').classList.contains('open')) {
+      closePayload();
+    } else {
+      closeDetail();
+    }
+  }
+});
+
+/* ── Webhook event log ──────────────────────────────────────────────────── */
+const OUTCOME_ICON = {
+  queued:   '🟢',
+  ignored:  '⚫',
+  rejected: '🔴',
+  error:    '🔴',
+};
+
+async function loadEvents() {
+  let events;
+  try {
+    const res = await fetch('/api/events');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    events = await res.json();
+  } catch (err) {
+    document.getElementById('event-wrap').innerHTML =
+      `<div class="empty">Failed to load events: ${err.message}</div>`;
+    return;
+  }
+
+  const wrap  = document.getElementById('event-wrap');
+  const count = document.getElementById('event-count');
+
+  count.textContent = events.length ? `${events.length} event${events.length !== 1 ? 's' : ''}` : '';
+
+  if (events.length === 0) {
+    wrap.innerHTML = '<div class="empty">No webhook events yet — events appear here as GitHub delivers them.</div>';
+    return;
+  }
+
+  const rows = events.map(ev => {
+    const ts   = new Date(ev.received_at).toLocaleString();
+    const icon = OUTCOME_ICON[ev.outcome] ?? '⚪';
+
+    /* PR link – only when we have a real PR number */
+    const prCell = ev.pr_number
+      ? `<a class="event-link" href="https://github.com/${ev.repo}/pull/${ev.pr_number}"
+            target="_blank" rel="noopener">
+           ${ev.repo} #${ev.pr_number}
+         </a>`
+      : `<span style="color:#8b949e">${ev.repo || '—'}</span>`;
+
+    /* Link to the review detail panel if this event triggered a review */
+    const reviewCell = ev.review_log_id
+      ? `<a class="event-link" href="#" onclick="event.preventDefault();openDetail(${ev.review_log_id})">
+           #${ev.review_log_id}
+         </a>`
+      : '<span style="color:#8b949e">—</span>';
+
+    const label = `Event #${ev.id} · ${ev.event_type}${ev.action ? ' / ' + ev.action : ''}`;
+
+    return `
+      <tr>
+        <td style="color:#8b949e;font-size:0.78rem">${ts}</td>
+        <td><code style="font-size:0.78rem;color:#c9d1d9">${ev.event_type}</code></td>
+        <td><code style="font-size:0.78rem;color:#8b949e">${ev.action || '—'}</code></td>
+        <td>${prCell}</td>
+        <td style="color:#8b949e">${ev.sender || '—'}</td>
+        <td>${icon} <span class="pill ${ev.outcome}">${ev.outcome}</span></td>
+        <td>${reviewCell}</td>
+        <td>
+          <button class="btn-payload"
+                  onclick="openPayload(${ev.id}, ${JSON.stringify(label)})">
+            { } Payload
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Received At</th>
+          <th>Event</th>
+          <th>Action</th>
+          <th>PR</th>
+          <th>Sender</th>
+          <th>Outcome</th>
+          <th>Review</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/* ── Initial load + auto-refresh every 30 s ────────────────────────────── */
+loadStats();
+loadEvents();
+setInterval(loadStats,  30_000);
+setInterval(loadEvents, 30_000);
+</script>
+</body>
+</html>
