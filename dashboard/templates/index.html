@@ -430,6 +430,189 @@
       text-align: center; padding: 3rem 1rem;
       color: #8b949e; font-size: 0.85rem;
     }
+
+    /* ── Setup wizard modal ───────────────────────────────────────── */
+    #wizard-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 300;
+    }
+    #wizard-modal {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.95);
+      opacity: 0;
+      transition: transform 0.2s cubic-bezier(0.4,0,0.2,1), opacity 0.2s;
+      width: min(720px, 96vw);
+      max-height: 90vh;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      z-index: 301;
+      display: flex;
+      flex-direction: column;
+    }
+    #wizard-modal.open {
+      transform: translate(-50%, -50%) scale(1);
+      opacity: 1;
+    }
+    #wizard-header {
+      padding: 1rem 1.3rem;
+      border-bottom: 1px solid #30363d;
+      display: flex; align-items: center; gap: 0.7rem;
+    }
+    #wizard-header h2 {
+      font-size: 1rem; font-weight: 700; flex: 1; margin: 0;
+    }
+    #wizard-close {
+      background: none; border: none; color: #8b949e;
+      font-size: 1.2rem; cursor: pointer; padding: 0.2rem 0.4rem;
+      border-radius: 4px; line-height: 1;
+    }
+    #wizard-close:hover { background: #30363d; color: #e6edf3; }
+    #wizard-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.2rem 1.5rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+    .wz-intro {
+      font-size: 0.83rem;
+      color: #8b949e;
+      line-height: 1.55;
+      border-left: 3px solid #388bfd;
+      padding-left: 0.9rem;
+    }
+
+    /* Step cards */
+    .wz-step {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 9px;
+      padding: 1rem 1.2rem;
+    }
+    .wz-step-header {
+      display: flex; align-items: center; gap: 0.65rem;
+      margin-bottom: 0.75rem;
+    }
+    .wz-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: #388bfd;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .wz-step-title {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #e6edf3;
+    }
+    .wz-step-body {
+      font-size: 0.81rem;
+      color: #8b949e;
+      line-height: 1.55;
+    }
+    .wz-step-body p { margin-bottom: 0.6rem; }
+    .wz-step-body p:last-child { margin-bottom: 0; }
+    .wz-step-body strong { color: #c9d1d9; }
+
+    /* Code blocks inside wizard */
+    .wz-code-wrap {
+      position: relative;
+      margin: 0.55rem 0;
+    }
+    .wz-code {
+      display: block;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 0.55rem 2.8rem 0.55rem 0.75rem;
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: 0.75rem;
+      color: #c9d1d9;
+      word-break: break-all;
+      white-space: pre-wrap;
+      line-height: 1.55;
+    }
+    .wz-copy {
+      position: absolute;
+      top: 0.35rem; right: 0.4rem;
+      background: #21262d; border: 1px solid #30363d;
+      border-radius: 5px; color: #8b949e;
+      font-size: 0.68rem; padding: 0.18rem 0.5rem;
+      cursor: pointer; transition: background 0.12s, color 0.12s;
+      line-height: 1.4;
+    }
+    .wz-copy:hover { background: #388bfd; border-color: #388bfd; color: #fff; }
+    .wz-copy.ok   { background: #1a7f37; border-color: #1a7f37; color: #fff; }
+
+    /* Inline inputs */
+    .wz-input-row {
+      display: flex; gap: 0.5rem; align-items: center;
+      margin: 0.55rem 0;
+      flex-wrap: wrap;
+    }
+    .wz-input {
+      flex: 1; min-width: 180px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 0.8rem;
+      padding: 0.35rem 0.65rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .wz-input:focus { border-color: #388bfd; }
+    .wz-btn {
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      cursor: pointer;
+      transition: background 0.13s, color 0.13s, border-color 0.13s;
+      white-space: nowrap;
+    }
+    .wz-btn:hover { background: #388bfd; border-color: #388bfd; color: #fff; }
+    .wz-btn.primary {
+      background: #238636; border-color: #2ea043; color: #fff;
+    }
+    .wz-btn.primary:hover { background: #2ea043; }
+
+    /* Status badge inside wizard */
+    .wz-status {
+      display: inline-block;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.68rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .wz-status.ok  { background: #1a7f37; color: #fff; }
+    .wz-status.warn { background: #9e6a03; color: #fff; }
+
+    /* Header setup button */
+    #btn-setup {
+      margin-left: auto;
+      background: #21262d;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #c9d1d9;
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.8rem;
+      cursor: pointer;
+      transition: background 0.13s, color 0.13s;
+    }
+    #btn-setup:hover { background: #388bfd; border-color: #388bfd; color: #fff; }
   </style>
 </head>
 <body>
@@ -439,6 +622,7 @@
   <h1>CodeSheriff</h1>
   <span class="badge">Live</span>
   <span class="subtitle" id="last-updated">Loading…</span>
+  <button id="btn-setup" onclick="openWizard()">⚙ Setup</button>
 </header>
 
 <main>
@@ -561,6 +745,198 @@
     </div>
   </div>
 </main>
+
+<!-- ── Setup wizard modal ─────────────────────────────────────────── -->
+<div id="wizard-overlay" onclick="closeWizard()"></div>
+<div id="wizard-modal" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+  <div id="wizard-header">
+    <span>⚙</span>
+    <h2 id="wizard-title">Connect a GitHub Repo — Setup Wizard</h2>
+    <button id="wizard-close" onclick="closeWizard()" title="Close">✕</button>
+  </div>
+  <div id="wizard-body">
+
+    <p class="wz-intro">
+      Follow these five steps to connect any GitHub repository to CodeSheriff.
+      Each new repo you want to review needs its own webhook pointing at this service.
+    </p>
+
+    <!-- Step 1: Repo -->
+    <div class="wz-step">
+      <div class="wz-step-header">
+        <div class="wz-num">1</div>
+        <div class="wz-step-title">Enter the GitHub repo you want to review</div>
+      </div>
+      <div class="wz-step-body">
+        <p>Type the repository in <strong>owner/name</strong> format — used to build links in steps below.</p>
+        <div class="wz-input-row">
+          <input id="wz-repo" class="wz-input" type="text"
+                 placeholder="e.g. pallets/flask"
+                 oninput="wizardRepoChanged()"
+                 autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Public URL -->
+    <div class="wz-step">
+      <div class="wz-step-header">
+        <div class="wz-num">2</div>
+        <div class="wz-step-title">Expose the webhook service to the internet</div>
+      </div>
+      <div class="wz-step-body">
+        <p>
+          GitHub needs a <strong>public HTTPS URL</strong> to deliver webhook events.
+          The webhook service runs on port <strong>8001</strong> locally.
+          Use <a href="https://ngrok.com" target="_blank" rel="noopener"
+                 style="color:#58a6ff">ngrok</a> (or any tunnel) to expose it:
+        </p>
+        <div class="wz-code-wrap">
+          <code class="wz-code">ngrok http 8001</code>
+          <button class="wz-copy" onclick="wzCopy(this,'ngrok http 8001')">Copy</button>
+        </div>
+        <p style="margin-top:0.7rem">
+          Then paste the <strong>https://…ngrok.io</strong> URL ngrok gives you:
+        </p>
+        <div class="wz-input-row">
+          <input id="wz-public-url" class="wz-input" type="url"
+                 placeholder="https://abc123.ngrok.io"
+                 oninput="wizardUrlChanged()"
+                 autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Secret -->
+    <div class="wz-step">
+      <div class="wz-step-header">
+        <div class="wz-num">3</div>
+        <div class="wz-step-title">Generate a webhook secret</div>
+      </div>
+      <div class="wz-step-body">
+        <p>
+          This shared secret lets CodeSheriff verify that payloads really come from GitHub
+          (HMAC-SHA256 signature check). Generate a fresh one — keep it secret.
+        </p>
+        <div class="wz-input-row">
+          <input id="wz-secret" class="wz-input" type="text"
+                 placeholder="Click Generate →"
+                 readonly autocomplete="off" spellcheck="false"
+                 style="font-family:monospace;font-size:0.75rem">
+          <button class="wz-btn" onclick="wzGenerateSecret()">Generate</button>
+          <button class="wz-btn" id="wz-secret-copy"
+                  onclick="wzCopySecret()" disabled>Copy</button>
+        </div>
+        <div id="wz-secret-status"></div>
+        <p style="margin-top:0.6rem">
+          Add this to your <strong>.env</strong> file (then restart the services):
+        </p>
+        <div class="wz-code-wrap">
+          <code class="wz-code" id="wz-env-snippet">WEBHOOK_SECRET=&lt;generate above first&gt;</code>
+          <button class="wz-copy" id="wz-env-copy"
+                  onclick="wzCopyEnvSnippet(this)">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: GitHub settings -->
+    <div class="wz-step">
+      <div class="wz-step-header">
+        <div class="wz-num">4</div>
+        <div class="wz-step-title">Add the webhook on GitHub</div>
+      </div>
+      <div class="wz-step-body">
+        <p>
+          Open your repo's webhook settings and fill in the fields shown below.
+          The link auto-updates once you enter a repo in Step 1.
+        </p>
+        <p>
+          <a id="wz-gh-link" href="#" target="_blank" rel="noopener"
+             style="color:#58a6ff;text-decoration:none;font-weight:600"
+             onclick="return wzGuardGhLink(event)">
+            → Open GitHub Webhook Settings
+          </a>
+        </p>
+
+        <table style="width:100%;font-size:0.8rem;border-collapse:collapse;margin-top:0.5rem">
+          <tr>
+            <td style="color:#8b949e;padding:0.3rem 0;width:140px;vertical-align:top">Payload URL</td>
+            <td>
+              <div class="wz-code-wrap" style="margin:0">
+                <code class="wz-code" id="wz-payload-url"
+                      style="padding-right:3rem">
+                  &lt;enter public URL in Step 2&gt;
+                </code>
+                <button class="wz-copy" id="wz-payload-copy"
+                        onclick="wzCopyPayloadUrl(this)">Copy</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="color:#8b949e;padding:0.3rem 0;vertical-align:top">Content type</td>
+            <td>
+              <div class="wz-code-wrap" style="margin:0.3rem 0 0">
+                <code class="wz-code">application/json</code>
+                <button class="wz-copy"
+                        onclick="wzCopy(this,'application/json')">Copy</button>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="color:#8b949e;padding:0.3rem 0;vertical-align:top">Secret</td>
+            <td style="padding-top:0.3rem;color:#c9d1d9">
+              <span id="wz-secret-ref">
+                (paste the value from Step 3)
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td style="color:#8b949e;padding:0.3rem 0;vertical-align:top">Events</td>
+            <td style="padding-top:0.3rem;color:#c9d1d9">
+              Choose <strong>Let me select individual events</strong>
+              → tick <strong>Pull requests</strong> only
+            </td>
+          </tr>
+          <tr>
+            <td style="color:#8b949e;padding:0.3rem 0;vertical-align:top">Active</td>
+            <td style="padding-top:0.3rem;color:#c9d1d9">☑ checked</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Step 5: Test -->
+    <div class="wz-step">
+      <div class="wz-step-header">
+        <div class="wz-num">5</div>
+        <div class="wz-step-title">Test the full pipeline</div>
+      </div>
+      <div class="wz-step-body">
+        <p>
+          Open a real PR on the repo (or use an existing one) and run the demo script
+          to fire a simulated webhook — no actual PR needed locally:
+        </p>
+        <div class="wz-code-wrap">
+          <code class="wz-code" id="wz-test-cmd">python test_demo.py  # enter repo in Step 1 to fill this in</code>
+          <button class="wz-copy" onclick="wzCopyTestCmd(this)">Copy</button>
+        </div>
+        <p style="margin-top:0.65rem">
+          Or run a dry-run that tests only webhook reception + DB logging
+          (no GitHub API calls required):
+        </p>
+        <div class="wz-code-wrap">
+          <code class="wz-code" id="wz-dryrun-cmd">python test_demo.py --dry-run</code>
+          <button class="wz-copy" onclick="wzCopy(this, document.getElementById('wz-dryrun-cmd').textContent)">Copy</button>
+        </div>
+        <p style="margin-top:0.65rem">
+          Once a review completes, it appears in the <strong>Recent Reviews</strong> table
+          on this dashboard — auto-refreshes every 30 seconds.
+        </p>
+      </div>
+    </div>
+
+  </div><!-- /wizard-body -->
+</div><!-- /wizard-modal -->
 
 <!-- ── Payload viewer modal ───────────────────────────────────────── -->
 <div id="payload-overlay"></div>
@@ -1054,16 +1430,6 @@ document.getElementById('payload-copy').addEventListener('click', () => {
 
 document.getElementById('payload-modal-close').addEventListener('click', closePayload);
 document.getElementById('payload-overlay').addEventListener('click', closePayload);
-document.addEventListener('keydown', e => {
-  /* Escape closes the topmost open modal */
-  if (e.key === 'Escape') {
-    if (document.getElementById('payload-modal').classList.contains('open')) {
-      closePayload();
-    } else {
-      closeDetail();
-    }
-  }
-});
 
 /* ── Webhook event log ──────────────────────────────────────────────────── */
 const OUTCOME_ICON = {
@@ -1157,6 +1523,219 @@ loadStats();
 loadEvents();
 setInterval(loadStats,  30_000);
 setInterval(loadEvents, 30_000);
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SETUP WIZARD
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Live state tracked across all wizard inputs */
+const wz = { repo: '', publicUrl: '', secret: '' };
+
+/* ── Open / close ────────────────────────────────────────────────────────── */
+function openWizard() {
+  const overlay = document.getElementById('wizard-overlay');
+  const modal   = document.getElementById('wizard-modal');
+  overlay.style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  requestAnimationFrame(() => modal.classList.add('open'));
+
+  /* Fetch server info to show whether WEBHOOK_SECRET is already configured */
+  fetch('/api/setup/info')
+    .then(r => r.json())
+    .then(info => {
+      const el = document.getElementById('wz-secret-status');
+      if (info.webhook_secret_set) {
+        el.innerHTML =
+          '<span class="wz-status ok" style="margin-top:0.4rem;display:inline-block">' +
+          '✓ WEBHOOK_SECRET is already set in .env</span>';
+      } else {
+        el.innerHTML =
+          '<span class="wz-status warn" style="margin-top:0.4rem;display:inline-block">' +
+          '⚠ WEBHOOK_SECRET not configured — generate one below</span>';
+      }
+    })
+    .catch(() => {});
+}
+
+function closeWizard() {
+  const modal   = document.getElementById('wizard-modal');
+  const overlay = document.getElementById('wizard-overlay');
+  modal.classList.remove('open');
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+  }, 220);
+}
+
+/* ── Step 1: repo input ──────────────────────────────────────────────────── */
+function wizardRepoChanged() {
+  wz.repo = (document.getElementById('wz-repo').value || '').trim();
+  _wizardUpdateDynamic();
+}
+
+/* ── Step 2: public URL input ────────────────────────────────────────────── */
+function wizardUrlChanged() {
+  let url = (document.getElementById('wz-public-url').value || '').trim();
+  /* Strip trailing slash so we can append /webhook cleanly */
+  url = url.replace(/\/$/, '');
+  wz.publicUrl = url;
+  _wizardUpdateDynamic();
+}
+
+/* ── Recompute all dynamic fields whenever any input changes ─────────────── */
+function _wizardUpdateDynamic() {
+  /* Payload URL (Step 4 table) */
+  const payloadEl = document.getElementById('wz-payload-url');
+  if (wz.publicUrl) {
+    payloadEl.textContent = wz.publicUrl + '/webhook';
+  } else {
+    payloadEl.textContent = '<enter public URL in Step 2>';
+  }
+
+  /* GitHub settings link (Step 4) */
+  const ghLink = document.getElementById('wz-gh-link');
+  if (wz.repo && wz.repo.includes('/')) {
+    ghLink.href = `https://github.com/${wz.repo}/settings/hooks/new`;
+    ghLink.style.opacity = '1';
+  } else {
+    ghLink.href = '#';
+    ghLink.style.opacity = '0.45';
+  }
+
+  /* Test command (Step 5) */
+  const testEl = document.getElementById('wz-test-cmd');
+  if (wz.repo && wz.repo.includes('/')) {
+    const parts = wz.repo.split('/');
+    testEl.textContent =
+      `python test_demo.py --owner ${parts[0]} --repo ${parts[1]}`;
+  } else {
+    testEl.textContent = 'python test_demo.py  # enter repo in Step 1 to fill this in';
+  }
+
+  /* Secret reference in Step 4 table */
+  const secRef = document.getElementById('wz-secret-ref');
+  if (wz.secret) {
+    secRef.textContent = wz.secret;
+    secRef.style.fontFamily = 'monospace';
+    secRef.style.fontSize   = '0.75rem';
+    secRef.style.color      = '#c9d1d9';
+  } else {
+    secRef.textContent = '(paste the value from Step 3)';
+    secRef.style.fontFamily = '';
+    secRef.style.color      = '#8b949e';
+  }
+}
+
+/* ── Guard the GitHub link so it doesn't navigate before a repo is entered ─ */
+function wzGuardGhLink(e) {
+  if (!wz.repo || !wz.repo.includes('/')) {
+    e.preventDefault();
+    document.getElementById('wz-repo').focus();
+    document.getElementById('wz-repo').style.borderColor = '#f85149';
+    setTimeout(() => {
+      document.getElementById('wz-repo').style.borderColor = '';
+    }, 1200);
+    return false;
+  }
+  return true;
+}
+
+/* ── Step 3: secret generation ──────────────────────────────────────────── */
+function wzGenerateSecret() {
+  fetch('/api/setup/generate-secret')
+    .then(r => r.json())
+    .then(data => {
+      wz.secret = data.secret;
+      const inp = document.getElementById('wz-secret');
+      inp.value = wz.secret;
+
+      /* Enable the copy button */
+      document.getElementById('wz-secret-copy').disabled = false;
+
+      /* Update .env snippet */
+      const envEl = document.getElementById('wz-env-snippet');
+      envEl.textContent = `WEBHOOK_SECRET=${wz.secret}`;
+
+      /* Refresh status badge */
+      const statusEl = document.getElementById('wz-secret-status');
+      statusEl.innerHTML =
+        '<span class="wz-status warn" style="margin-top:0.4rem;display:inline-block">' +
+        '⚠ Copy this secret and add it to .env — then restart services</span>';
+
+      _wizardUpdateDynamic();
+    })
+    .catch(() => {
+      alert('Could not reach /api/setup/generate-secret — is the dashboard running?');
+    });
+}
+
+function wzCopySecret() {
+  if (!wz.secret) return;
+  navigator.clipboard.writeText(wz.secret).then(() => {
+    const btn = document.getElementById('wz-secret-copy');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+function wzCopyEnvSnippet(btn) {
+  const text = document.getElementById('wz-env-snippet').textContent;
+  if (!text || text.includes('<generate')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Done!';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+function wzCopyPayloadUrl(btn) {
+  const url = document.getElementById('wz-payload-url').textContent.trim();
+  if (!url || url.startsWith('<')) return;
+  navigator.clipboard.writeText(url).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+function wzCopyTestCmd(btn) {
+  const text = document.getElementById('wz-test-cmd').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+/* Generic copy helper for static strings */
+function wzCopy(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓';
+    btn.classList.add('ok');
+    setTimeout(() => { btn.textContent = orig; btn.classList.remove('ok'); }, 2000);
+  });
+}
+
+/* Escape key closes wizard (highest z-index wins) */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('wizard-modal').classList.contains('open')) {
+      closeWizard();
+      return;
+    }
+    if (document.getElementById('payload-modal').classList.contains('open')) {
+      closePayload();
+    } else {
+      closeDetail();
+    }
+  }
+});
 </script>
 </body>
 </html>

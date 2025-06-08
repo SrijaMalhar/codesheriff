@@ -13,6 +13,7 @@ Pages
 """
 
 import json
+import secrets as _secrets
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -334,6 +335,43 @@ def api_event_payload(event_id: int):
         })
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# Setup wizard – server info
+# ---------------------------------------------------------------------------
+@app.route("/api/setup/info")
+def api_setup_info():
+    """Return configuration metadata consumed by the setup wizard.
+
+    Response shape
+    --------------
+    {
+      "webhook_secret_set": true,
+      "shadow_mode": false,
+      "webhook_port": 8001
+    }
+    """
+    import os
+    return jsonify({
+        "webhook_secret_set": bool(os.getenv("WEBHOOK_SECRET", "")),
+        "shadow_mode": SHADOW_MODE,
+        "webhook_port": 8001,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Setup wizard – random secret generator
+# ---------------------------------------------------------------------------
+@app.route("/api/setup/generate-secret")
+def api_generate_secret():
+    """Return a fresh cryptographically random 32-byte hex webhook secret.
+
+    Response shape
+    --------------
+    { "secret": "a3f9..." }
+    """
+    return jsonify({"secret": _secrets.token_hex(32)})
 
 
 # ---------------------------------------------------------------------------
