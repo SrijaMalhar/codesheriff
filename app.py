@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import io
 import json
 import os
 import sqlite3
@@ -6,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
 from review import process_pr, verify_sig
 
@@ -91,7 +94,7 @@ async def webhook(
 
 @app.post("/feedback")
 async def feedback(request: Request):
-    """Thumbs up / thumbs down on a review comment."""
+    """Record a thumbs-up or thumbs-down vote on a review comment."""
     data = await request.json()
     conn = _db()
     conn.execute(
@@ -114,3 +117,27 @@ def feedback_summary():
     conn.close()
     counts = {r[0]: r[1] for r in rows}
     return {"thumbs_up": counts.get("up", 0), "thumbs_down": counts.get("down", 0)}
+
+
+@app.get("/feedback/export")
+def feedback_export(vote: str = "down"):
+    """Export feedback rows as CSV — defaults to thumbs-down for rule-improvement review."""
+    conn = _db()
+    rows = conn.execute(
+        "SELECT id, comment_id, vote, pr_id, ts FROM feedback WHERE vote = ? ORDER BY ts DESC",
+        (vote,),
+    ).fetchall()
+    conn.close()
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["id", "comment_id", "vote", "pr_id", "recorded_at"])
+    writer.writerows(rows)
+    buf.seek(0)
+
+    filename = f"codesheriff_feedback_{vote}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
