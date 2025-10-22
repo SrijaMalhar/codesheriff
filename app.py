@@ -20,18 +20,22 @@ DB_PATH = os.getenv("DB_PATH", "feedback.db")
 _queue: asyncio.Queue = asyncio.Queue()
 
 
-# ---------- tiny SQLite feedback store ----------
+# ---------- tiny SQLite store ----------
 
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
+    conn.executescript("""
         CREATE TABLE IF NOT EXISTS feedback (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            comment_id TEXT,
-            vote       TEXT,
-            pr_id      TEXT,
-            ts         DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
+            comment_id TEXT, vote TEXT, pr_id TEXT,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner TEXT, repo TEXT, pr_num INTEGER,
+            issues INTEGER, inline_comments INTEGER, shadow INTEGER,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     conn.commit()
     return conn
@@ -43,7 +47,16 @@ async def _worker():
     while True:
         job = await _queue.get()
         try:
-            await asyncio.to_thread(process_pr, **job, shadow=SHADOW_MODE)
+            result = await asyncio.to_thread(process_pr, **job, shadow=SHADOW_MODE)
+            conn = _db()
+            conn.execute(
+                "INSERT INTO reviews (owner,repo,pr_num,issues,inline_comments,shadow)"
+                " VALUES (?,?,?,?,?,?)",
+                (job["owner"], job["repo"], job["pr_num"],
+                 result.get("issues", 0), result.get("inline", 0), int(SHADOW_MODE)),
+            )
+            conn.commit()
+            conn.close()
         except Exception as exc:
             print(f"[worker] {exc}")
         finally:
@@ -99,9 +112,7 @@ async def feedback(request: Request):
     conn = _db()
     conn.execute(
         "INSERT INTO feedback (comment_id, vote, pr_id) VALUES (?, ?, ?)",
-        (str(data.get("comment_id", "")),
-         data.get("vote", ""),
-         str(data.get("pr_id", ""))),
+        (str(data.get("comment_id", "")), data.get("vote", ""), str(data.get("pr_id", ""))),
     )
     conn.commit()
     conn.close()
@@ -111,9 +122,7 @@ async def feedback(request: Request):
 @app.get("/feedback/summary")
 def feedback_summary():
     conn = _db()
-    rows = conn.execute(
-        "SELECT vote, COUNT(*) FROM feedback GROUP BY vote"
-    ).fetchall()
+    rows = conn.execute("SELECT vote, COUNT(*) FROM feedback GROUP BY vote").fetchall()
     conn.close()
     counts = {r[0]: r[1] for r in rows}
     return {"thumbs_up": counts.get("up", 0), "thumbs_down": counts.get("down", 0)}
@@ -124,20 +133,31 @@ def feedback_export(vote: str = "down"):
     """Export feedback rows as CSV — defaults to thumbs-down for rule-improvement review."""
     conn = _db()
     rows = conn.execute(
-        "SELECT id, comment_id, vote, pr_id, ts FROM feedback WHERE vote = ? ORDER BY ts DESC",
+        "SELECT id, comment_id, vote, pr_id, ts FROM feedback WHERE vote=? ORDER BY ts DESC",
         (vote,),
     ).fetchall()
     conn.close()
-
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["id", "comment_id", "vote", "pr_id", "recorded_at"])
     writer.writerows(rows)
     buf.seek(0)
-
     filename = f"codesheriff_feedback_{vote}.csv"
     return StreamingResponse(
-        iter([buf.getvalue()]),
-        media_type="text/csv",
+        iter([buf.getvalue()]), media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@app.get("/reviews")
+def reviews(limit: int = 20):
+    """List recent PR reviews — owner, repo, PR number, issue count, shadow flag."""
+    conn = _db()
+    rows = conn.execute(
+        "SELECT owner,repo,pr_num,issues,inline_comments,shadow,ts"
+        " FROM reviews ORDER BY ts DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    keys = ["owner", "repo", "pr_num", "issues", "inline_comments", "shadow", "ts"]
+    return [dict(zip(keys, r)) for r in rows]
