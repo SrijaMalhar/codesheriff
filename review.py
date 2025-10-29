@@ -1,17 +1,23 @@
 import base64
 import hashlib
 import hmac
+import json
 import os
 import re
 import subprocess
 import tempfile
 from pathlib import Path
 
+import google.generativeai as genai
 import httpx
 
 GH = "https://api.github.com"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 
 def gh(method: str, path: str, **kwargs) -> httpx.Response:
@@ -30,11 +36,15 @@ def verify_sig(body: bytes, header: str) -> bool:
     return hmac.compare_digest(sig, header or "")
 
 
+def _severity(code: str) -> str:
+    return "warning" if code.startswith("W") else "info" if code.startswith("C") else "error"
+
+
 def lint(filename: str, source: str) -> list[dict]:
     with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
         f.write(source)
         tmp = f.name
-    issues: list[dict] = []
+    findings: list[dict] = []
     try:
         out = subprocess.run(
             ["flake8", "--max-line-length=120", "--format=%(row)d|%(col)d|%(code)s|%(text)s", tmp],
@@ -42,17 +52,40 @@ def lint(filename: str, source: str) -> list[dict]:
         ).stdout
         for line in out.splitlines():
             row, col, code, msg = line.split("|", 3)
-            issues.append({"file": filename, "line": int(row), "col": int(col),
-                           "code": code, "msg": msg.strip()})
+            findings.append({
+                "file": filename, "line": int(row), "col": int(col),
+                "code": code, "msg": msg.strip(),
+                "severity": _severity(code), "source": "flake8",
+            })
     except Exception:
         pass
     finally:
         Path(tmp).unlink(missing_ok=True)
-    return issues
+    return findings
+
+
+def gemini_review(filename: str, source: str) -> list[dict]:
+    """Ask Gemini to spot bugs, security issues, and bad practices."""
+    if not GOOGLE_API_KEY:
+        return []
+    prompt = (
+        f"Review this Python file for bugs, security issues, and bad practices.\n"
+        f"File: {filename}\n```python\n{source[:4000]}\n```\n"
+        'Return ONLY a JSON array. Each item: {"line":int,"severity":"error"|"warning"|"info",'
+        '"msg":"concise"}. Return [] if nothing found. No markdown.'
+    )
+    try:
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", model.generate_content(prompt).text.strip())
+        return [
+            {"file": filename, "code": "AI", "col": 0, "source": "gemini", **f}
+            for f in json.loads(raw) if isinstance(f, dict)
+        ]
+    except Exception:
+        return []
 
 
 def parse_diff_positions(diff_text: str) -> dict[str, dict[int, int]]:
-    """Map (filename, source_line) -> diff_position for inline PR comments."""
     positions: dict[str, dict[int, int]] = {}
     cur, diff_pos, src_line = None, 0, 0
     for line in diff_text.splitlines():
@@ -74,13 +107,14 @@ def parse_diff_positions(diff_text: str) -> dict[str, dict[int, int]]:
     return positions
 
 
+_BADGE = {"error": "🔴", "warning": "🟡", "info": "🔵"}
+
+
 def process_pr(owner: str, repo: str, pr_num: int, sha: str, shadow: bool = False) -> dict:
-    # Fetch unified diff for position mapping
     diff_text = gh("GET", f"/repos/{owner}/{repo}/pulls/{pr_num}",
                    accept="application/vnd.github.v3.diff").text
     positions = parse_diff_positions(diff_text)
 
-    # Fetch all changed Python files (multi-file context)
     changed = gh("GET", f"/repos/{owner}/{repo}/pulls/{pr_num}/files").json()
     sources: dict[str, str] = {}
     for f in changed:
@@ -93,51 +127,42 @@ def process_pr(owner: str, repo: str, pr_num: int, sha: str, shadow: bool = Fals
         except Exception:
             pass
 
-    # Lint every file; gather cross-file issue list (context-aware summary)
-    all_issues: list[dict] = []
+    all_findings: list[dict] = []
     for filename, source in sources.items():
-        all_issues.extend(lint(filename, source))
+        all_findings += lint(filename, source) + gemini_review(filename, source)
 
     if shadow:
-        # Shadow mode: analyse but never post — return results for logging
-        return {"shadow": True, "issues": all_issues, "files": list(sources)}
+        return {"shadow": True, "findings": all_findings, "files": list(sources)}
 
-    # Split into inline (has diff position) and orphan (outside the diff)
     inline_comments, orphan = [], []
-    for issue in all_issues:
-        pos = positions.get(issue["file"], {}).get(issue["line"])
+    for f in all_findings:
+        pos = positions.get(f["file"], {}).get(f["line"])
+        tag = f"{_BADGE.get(f['severity'], '')} **{f['severity'].upper()}**"
+        body = f"{tag} `{f['code']}` — {f['msg']}"
+        if f["source"] == "gemini":
+            body += " *(Gemini)*"
         if pos:
-            inline_comments.append({
-                "path": issue["file"], "position": pos,
-                "body": (f"`{issue['code']}` — {issue['msg']}\n"
-                         f"*(line {issue['line']}, col {issue['col']})*"),
-            })
+            inline_comments.append({"path": f["file"], "position": pos, "body": body})
         else:
-            orphan.append(issue)
+            orphan.append(f)
 
-    # Build context-aware review summary
-    body = [
-        "## 🤠 CodeSheriff Review",
-        "",
-        f"Reviewed **{len(sources)} file(s)**, "
-        f"found **{len(all_issues)} issue(s)** "
-        f"({len(inline_comments)} inline, {len(orphan)} outside diff).",
+    errors = sum(1 for f in all_findings if f["severity"] == "error")
+    warnings = sum(1 for f in all_findings if f["severity"] == "warning")
+    summary = [
+        "## 🤠 CodeSheriff Review", "",
+        f"Reviewed **{len(sources)} file(s)** — "
+        f"🔴 {errors} errors · 🟡 {warnings} warnings · "
+        f"{len(inline_comments)} inline · {len(orphan)} outside diff.",
     ]
     if orphan:
-        body += ["", "**Issues outside the diff:**"]
-        for i in orphan[:10]:
-            body.append(f"- `{i['file']}:{i['line']}` `{i['code']}` {i['msg']}")
-    body += [
-        "",
-        "<sub>👍 useful · 👎 not useful — "
-        "send feedback via `POST /feedback`</sub>",
-    ]
+        summary += ["", "**Issues outside the diff:**"]
+        for i in orphan[:8]:
+            summary.append(f"- {_BADGE.get(i['severity'],'')} `{i['file']}:{i['line']}` {i['msg']}")
+    summary += ["", "<sub>👍 useful · 👎 not useful — `POST /feedback`</sub>"]
 
     gh("POST", f"/repos/{owner}/{repo}/pulls/{pr_num}/reviews", json={
-        "commit_id": sha,
-        "body": "\n".join(body),
-        "event": "COMMENT",
-        "comments": inline_comments,
+        "commit_id": sha, "body": "\n".join(summary),
+        "event": "COMMENT", "comments": inline_comments,
     })
-
-    return {"issues": len(all_issues), "inline": len(inline_comments), "files": list(sources)}
+    return {"issues": len(all_findings), "inline": len(inline_comments),
+            "errors": errors, "warnings": warnings, "files": list(sources)}
