@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from review import process_pr, verify_sig
 
@@ -19,8 +19,34 @@ DB_PATH = os.getenv("DB_PATH", "feedback.db")
 
 _queue: asyncio.Queue = asyncio.Queue()
 
+_DASHBOARD = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CodeSheriff</title>
+<style>
+  body{font-family:sans-serif;max-width:960px;margin:40px auto;padding:0 20px}
+  h1{color:#333}table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:10px;text-align:left}
+  tr:nth-child(even){background:#f9f9f9}
+  .live{color:green;font-weight:bold}.shadow{color:#999}
+  .err{color:#c00}
+</style></head>
+<body>
+<h1>🤠 CodeSheriff Dashboard</h1>
+<table id="t">
+  <thead><tr><th>PR</th><th>Repo</th><th>Issues</th><th>Inline</th><th>Mode</th><th>When</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+fetch('/reviews').then(r=>r.json()).then(rows=>rows.forEach(r=>{
+  const tr=document.createElement('tr');
+  const mode=r.shadow?'<span class="shadow">shadow</span>':'<span class="live">live</span>';
+  tr.innerHTML=`<td>#${r.pr_num}</td><td>${r.owner}/${r.repo}</td>`
+    +`<td class="err">${r.issues}</td><td>${r.inline_comments}</td>`
+    +`<td>${mode}</td><td>${r.ts}</td>`;
+  document.querySelector('#t tbody').appendChild(tr);
+}));
+</script>
+</body></html>"""
 
-# ---------- tiny SQLite store ----------
 
 def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
@@ -40,8 +66,6 @@ def _db() -> sqlite3.Connection:
     conn.commit()
     return conn
 
-
-# ---------- background worker ----------
 
 async def _worker():
     while True:
@@ -73,11 +97,14 @@ async def lifespan(app: "FastAPI"):
 app = FastAPI(title="CodeSheriff", lifespan=lifespan)
 
 
-# ---------- endpoints ----------
-
 @app.get("/health")
 def health():
     return {"status": "ok", "shadow_mode": SHADOW_MODE, "queue": _queue.qsize()}
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    return _DASHBOARD
 
 
 @app.post("/webhook")
@@ -107,7 +134,6 @@ async def webhook(
 
 @app.post("/feedback")
 async def feedback(request: Request):
-    """Record a thumbs-up or thumbs-down vote on a review comment."""
     data = await request.json()
     conn = _db()
     conn.execute(
@@ -130,7 +156,6 @@ def feedback_summary():
 
 @app.get("/feedback/export")
 def feedback_export(vote: str = "down"):
-    """Export feedback rows as CSV — defaults to thumbs-down for rule-improvement review."""
     conn = _db()
     rows = conn.execute(
         "SELECT id, comment_id, vote, pr_id, ts FROM feedback WHERE vote=? ORDER BY ts DESC",
@@ -142,21 +167,18 @@ def feedback_export(vote: str = "down"):
     writer.writerow(["id", "comment_id", "vote", "pr_id", "recorded_at"])
     writer.writerows(rows)
     buf.seek(0)
-    filename = f"codesheriff_feedback_{vote}.csv"
     return StreamingResponse(
         iter([buf.getvalue()]), media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f"attachment; filename=feedback_{vote}.csv"},
     )
 
 
 @app.get("/reviews")
 def reviews(limit: int = 20):
-    """List recent PR reviews — owner, repo, PR number, issue count, shadow flag."""
     conn = _db()
     rows = conn.execute(
         "SELECT owner,repo,pr_num,issues,inline_comments,shadow,ts"
-        " FROM reviews ORDER BY ts DESC LIMIT ?",
-        (limit,),
+        " FROM reviews ORDER BY ts DESC LIMIT ?", (limit,),
     ).fetchall()
     conn.close()
     keys = ["owner", "repo", "pr_num", "issues", "inline_comments", "shadow", "ts"]
