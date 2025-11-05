@@ -3,4 +3,3 @@ uvicorn[standard]
 httpx
 python-dotenv
 flake8
-google-generativeai

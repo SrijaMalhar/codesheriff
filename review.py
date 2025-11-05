@@ -8,16 +8,17 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import google.generativeai as genai
 import httpx
 
 GH = "https://api.github.com"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+_GEMINI = (
+    "https://generativelanguage.googleapis.com"
+    "/v1beta/models/{}:generateContent?key={}"
+)
 
 
 def gh(method: str, path: str, **kwargs) -> httpx.Response:
@@ -27,6 +28,13 @@ def gh(method: str, path: str, **kwargs) -> httpx.Response:
         headers={"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": accept},
         timeout=30, **kwargs,
     )
+
+
+def gemini_call(prompt: str) -> str:
+    """Raw Gemini REST call — returns text or raises."""
+    url = _GEMINI.format(GEMINI_MODEL, GOOGLE_API_KEY)
+    r = httpx.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
+    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 
 def verify_sig(body: bytes, header: str) -> bool:
@@ -75,8 +83,7 @@ def gemini_review(filename: str, source: str) -> list[dict]:
         '"msg":"concise"}. Return [] if nothing found. No markdown.'
     )
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", model.generate_content(prompt).text.strip())
+        raw = re.sub(r"^```[a-z]*\n?|\n?```$", "", gemini_call(prompt)).strip()
         return [
             {"file": filename, "code": "AI", "col": 0, "source": "gemini", **f}
             for f in json.loads(raw) if isinstance(f, dict)

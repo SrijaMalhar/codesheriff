@@ -10,9 +10,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
-import google.generativeai as genai
-
-from review import process_pr, verify_sig
+from review import gemini_call, process_pr, verify_sig
 
 load_dotenv()
 
@@ -56,7 +54,7 @@ def _db() -> sqlite3.Connection:
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS feedback (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            comment_id TEXT, vote TEXT, pr_id TEXT,
+            comment_id TEXT, vote TEXT, pr_id TEXT, body TEXT DEFAULT '',
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS reviews (
@@ -71,11 +69,6 @@ def _db() -> sqlite3.Connection:
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    try:
-        conn.execute("ALTER TABLE feedback ADD COLUMN body TEXT DEFAULT ''")
-        conn.commit()
-    except Exception:
-        pass  # column already exists
     conn.commit()
     return conn
 
@@ -187,18 +180,6 @@ def feedback_export(vote: str = "down"):
     )
 
 
-@app.get("/reviews")
-def reviews(limit: int = 20):
-    conn = _db()
-    rows = conn.execute(
-        "SELECT owner,repo,pr_num,issues,inline_comments,shadow,ts"
-        " FROM reviews ORDER BY ts DESC LIMIT ?", (limit,),
-    ).fetchall()
-    conn.close()
-    keys = ["owner", "repo", "pr_num", "issues", "inline_comments", "shadow", "ts"]
-    return [dict(zip(keys, r)) for r in rows]
-
-
 @app.post("/feedback/retrain")
 def feedback_retrain():
     """Send thumbs-down comments to Gemini and store improvement suggestions."""
@@ -215,15 +196,25 @@ def feedback_retrain():
         "Suggest 3 concise, specific improvements to reduce noise in automated code review."
     )
     try:
-        if GOOGLE_API_KEY:
-            genai.configure(api_key=GOOGLE_API_KEY)
-        suggestion = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt).text.strip()
+        suggestion = gemini_call(prompt)
     except Exception as exc:
         return {"status": "error", "detail": str(exc)}
     conn.execute("INSERT INTO suggestions (suggestion) VALUES (?)", (suggestion,))
     conn.commit()
     conn.close()
     return {"status": "stored", "suggestion": suggestion}
+
+
+@app.get("/reviews")
+def reviews(limit: int = 20):
+    conn = _db()
+    rows = conn.execute(
+        "SELECT owner,repo,pr_num,issues,inline_comments,shadow,ts"
+        " FROM reviews ORDER BY ts DESC LIMIT ?", (limit,),
+    ).fetchall()
+    conn.close()
+    keys = ["owner", "repo", "pr_num", "issues", "inline_comments", "shadow", "ts"]
+    return [dict(zip(keys, r)) for r in rows]
 
 
 @app.get("/suggestions")
