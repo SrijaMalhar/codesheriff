@@ -10,12 +10,15 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
+import google.generativeai as genai
+
 from review import process_pr, verify_sig
 
 load_dotenv()
 
 SHADOW_MODE = os.getenv("SHADOW_MODE", "false").lower() == "true"
 DB_PATH = os.getenv("DB_PATH", "feedback.db")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
 _queue: asyncio.Queue = asyncio.Queue()
 
@@ -62,7 +65,17 @@ def _db() -> sqlite3.Connection:
             issues INTEGER, inline_comments INTEGER, shadow INTEGER,
             ts DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS suggestions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            suggestion TEXT,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     """)
+    try:
+        conn.execute("ALTER TABLE feedback ADD COLUMN body TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.commit()
     return conn
 
@@ -137,8 +150,9 @@ async def feedback(request: Request):
     data = await request.json()
     conn = _db()
     conn.execute(
-        "INSERT INTO feedback (comment_id, vote, pr_id) VALUES (?, ?, ?)",
-        (str(data.get("comment_id", "")), data.get("vote", ""), str(data.get("pr_id", ""))),
+        "INSERT INTO feedback (comment_id, vote, pr_id, body) VALUES (?, ?, ?, ?)",
+        (str(data.get("comment_id", "")), data.get("vote", ""),
+         str(data.get("pr_id", "")), str(data.get("body", ""))),
     )
     conn.commit()
     conn.close()
@@ -183,3 +197,41 @@ def reviews(limit: int = 20):
     conn.close()
     keys = ["owner", "repo", "pr_num", "issues", "inline_comments", "shadow", "ts"]
     return [dict(zip(keys, r)) for r in rows]
+
+
+@app.post("/feedback/retrain")
+def feedback_retrain():
+    """Send thumbs-down comments to Gemini and store improvement suggestions."""
+    conn = _db()
+    rows = conn.execute(
+        "SELECT id, comment_id, body FROM feedback WHERE vote='down' ORDER BY ts DESC LIMIT 20"
+    ).fetchall()
+    if not rows or not GOOGLE_API_KEY:
+        return {"status": "skipped", "reason": "no data or GOOGLE_API_KEY not set"}
+    items = "\n".join(f"- {r[2] or r[1]}" for r in rows)
+    prompt = (
+        "These GitHub PR review comments were marked unhelpful by developers:\n"
+        f"{items}\n\n"
+        "Suggest 3 concise, specific improvements to reduce noise in automated code review."
+    )
+    try:
+        if GOOGLE_API_KEY:
+            genai.configure(api_key=GOOGLE_API_KEY)
+        suggestion = genai.GenerativeModel("gemini-1.5-flash").generate_content(prompt).text.strip()
+    except Exception as exc:
+        return {"status": "error", "detail": str(exc)}
+    conn.execute("INSERT INTO suggestions (suggestion) VALUES (?)", (suggestion,))
+    conn.commit()
+    conn.close()
+    return {"status": "stored", "suggestion": suggestion}
+
+
+@app.get("/suggestions")
+def suggestions(limit: int = 10):
+    """List Gemini-generated review improvement suggestions."""
+    conn = _db()
+    rows = conn.execute(
+        "SELECT id, suggestion, ts FROM suggestions ORDER BY ts DESC LIMIT ?", (limit,)
+    ).fetchall()
+    conn.close()
+    return [{"id": r[0], "suggestion": r[1], "ts": r[2]} for r in rows]
