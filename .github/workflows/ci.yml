@@ -14,4 +14,4 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install flake8
-      - run: flake8 app.py review.py --max-line-length=120
+      - run: flake8 app.py review.py sheriff.py --max-line-length=120

@@ -14,7 +14,8 @@ GH = "https://api.github.com"
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK = os.getenv("GEMINI_FALLBACK", "gemini-2.5-flash-lite")
 _GEMINI = (
     "https://generativelanguage.googleapis.com"
     "/v1beta/models/{}:generateContent?key={}"
@@ -31,10 +32,17 @@ def gh(method: str, path: str, **kwargs) -> httpx.Response:
 
 
 def gemini_call(prompt: str) -> str:
-    """Raw Gemini REST call — returns text or raises."""
-    url = _GEMINI.format(GEMINI_MODEL, GOOGLE_API_KEY)
-    r = httpx.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=30)
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    """Call Gemini REST API, falling back to lite model on 503."""
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    for model in (GEMINI_MODEL, GEMINI_FALLBACK):
+        url = _GEMINI.format(model, GOOGLE_API_KEY)
+        r = httpx.post(url, json=payload, timeout=30)
+        data = r.json()
+        if "candidates" in data:
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if data.get("error", {}).get("code") != 503:
+            break
+    raise RuntimeError(data.get("error", {}).get("message", "Gemini error"))
 
 
 def verify_sig(body: bytes, header: str) -> bool:
