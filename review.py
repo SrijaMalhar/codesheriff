@@ -22,7 +22,7 @@ _GEMINI = (
 )
 
 
-def gh(method: str, path: str, **kwargs) -> httpx.Response:
+def gh(method, path, **kwargs):
     accept = kwargs.pop("accept", "application/vnd.github+json")
     return httpx.request(
         method, f"{GH}{path}",
@@ -31,8 +31,8 @@ def gh(method: str, path: str, **kwargs) -> httpx.Response:
     )
 
 
-def gemini_call(prompt: str) -> str:
-    """Call Gemini REST API, falling back to lite model on 503."""
+def gemini_call(prompt):
+    # try primary model, fall back to lite on 503
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for model in (GEMINI_MODEL, GEMINI_FALLBACK):
         url = _GEMINI.format(model, GOOGLE_API_KEY)
@@ -45,22 +45,22 @@ def gemini_call(prompt: str) -> str:
     raise RuntimeError(data.get("error", {}).get("message", "Gemini error"))
 
 
-def verify_sig(body: bytes, header: str) -> bool:
+def verify_sig(body, header):
     if not WEBHOOK_SECRET:
         return True
     sig = "sha256=" + hmac.new(WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig, header or "")
+    return sig == (header or "")
 
 
-def _severity(code: str) -> str:
+def _severity(code):
     return "warning" if code.startswith("W") else "info" if code.startswith("C") else "error"
 
 
-def lint(filename: str, source: str) -> list[dict]:
+def lint(filename, source):
     with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
         f.write(source)
         tmp = f.name
-    findings: list[dict] = []
+    findings = []
     try:
         out = subprocess.run(
             ["flake8", "--max-line-length=120", "--format=%(row)d|%(col)d|%(code)s|%(text)s", tmp],
@@ -80,8 +80,8 @@ def lint(filename: str, source: str) -> list[dict]:
     return findings
 
 
-def gemini_review(filename: str, source: str) -> list[dict]:
-    """Ask Gemini to spot bugs, security issues, and bad practices."""
+def gemini_review(filename, source):
+    # ask Gemini to spot bugs and security issues in the file
     if not GOOGLE_API_KEY:
         return []
     prompt = (
@@ -100,8 +100,9 @@ def gemini_review(filename: str, source: str) -> list[dict]:
         return []
 
 
-def parse_diff_positions(diff_text: str) -> dict[str, dict[int, int]]:
-    positions: dict[str, dict[int, int]] = {}
+def parse_diff_positions(diff_text):
+    # maps filename -> {source_line: diff_position} for posting inline comments
+    positions = {}
     cur, diff_pos, src_line = None, 0, 0
     for line in diff_text.splitlines():
         if line.startswith("+++ b/"):
@@ -125,13 +126,13 @@ def parse_diff_positions(diff_text: str) -> dict[str, dict[int, int]]:
 _BADGE = {"error": "🔴", "warning": "🟡", "info": "🔵"}
 
 
-def process_pr(owner: str, repo: str, pr_num: int, sha: str, shadow: bool = False) -> dict:
+def process_pr(owner, repo, pr_num, sha, shadow=False):
     diff_text = gh("GET", f"/repos/{owner}/{repo}/pulls/{pr_num}",
                    accept="application/vnd.github.v3.diff").text
     positions = parse_diff_positions(diff_text)
 
     changed = gh("GET", f"/repos/{owner}/{repo}/pulls/{pr_num}/files").json()
-    sources: dict[str, str] = {}
+    sources = {}
     for f in changed:
         if not f["filename"].endswith(".py") or f.get("status") == "removed":
             continue
@@ -142,7 +143,7 @@ def process_pr(owner: str, repo: str, pr_num: int, sha: str, shadow: bool = Fals
         except Exception:
             pass
 
-    all_findings: list[dict] = []
+    all_findings = []
     for filename, source in sources.items():
         all_findings += lint(filename, source) + gemini_review(filename, source)
 
@@ -172,7 +173,9 @@ def process_pr(owner: str, repo: str, pr_num: int, sha: str, shadow: bool = Fals
     if orphan:
         summary += ["", "**Issues outside the diff:**"]
         for i in orphan[:8]:
-            summary.append(f"- {_BADGE.get(i['severity'],'')} `{i['file']}:{i['line']}` {i['msg']}")
+            summary.append(
+                f"- {_BADGE.get(i['severity'],'')} `{i['file']}:{i['line']}` {i['msg']}"
+            )
     summary += ["", "<sub>👍 useful · 👎 not useful — `POST /feedback`</sub>"]
 
     gh("POST", f"/repos/{owner}/{repo}/pulls/{pr_num}/reviews", json={
