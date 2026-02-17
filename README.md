@@ -14,6 +14,10 @@ shadow mode, async queue, and a thumbs-up/down feedback loop.
 | **Feedback loop** | `POST /feedback` records 👍/👎 votes per comment for future tuning |
 | **GitHub Actions** | Drop `pr-review.yml` in any repo — no server needed |
 
+## Demo
+
+See [DEMO.md](DEMO.md) for screenshots of what CodeSheriff posts on a real PR.
+
 ## Quick Start
 
 ```bash
@@ -68,3 +72,7 @@ SHADOW_MODE=true uvicorn app:app --port 8001
 
 Add `GOOGLE_API_KEY` to your repo secrets, then copy `.github/workflows/pr-review.yml`
 into any Python repo. CodeSheriff will review every pull request automatically.
+
+## License
+
+MIT
