@@ -1,27 +1,9 @@
-# CodeSheriff – Python dependencies
-# Install with:  pip install -r requirements.txt
-
-# ── FastAPI microservices ─────────────────────────────────────────────────
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-
-# ── Flask dashboard ───────────────────────────────────────────────────────
-flask==3.1.0
-
-# ── Database (ORM + SQLite driver is bundled with Python) ─────────────────
-sqlalchemy==2.0.36
-
-# ── HTTP client (inter-service calls + GitHub API) ────────────────────────
-httpx==0.27.2
-
-# ── Google Gemini SDK ────────────────────────────────────────────────────
-google-generativeai==0.8.3
-
-# ── Static analysis ───────────────────────────────────────────────────────
-flake8==7.1.1
-
-# ── Environment variable loading ─────────────────────────────────────────
-python-dotenv==1.0.1
-
-# ── Data validation (used by FastAPI internally) ──────────────────────────
-pydantic==2.10.3
+fastapi==0.136.3
+uvicorn[standard]==0.49.0
+flask==3.1.3
+sqlalchemy==2.0.50
+httpx==0.28.1
+google-generativeai==0.8.6
+flake8==7.3.0
+python-dotenv==1.2.2
+pydantic==2.13.4
