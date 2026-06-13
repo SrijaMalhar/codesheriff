@@ -1,4 +1,4 @@
-# 🤠 CodeSheriff
+# CodeSheriff
 
 An AI-powered GitHub Pull Request reviewer built as a Python microservices
 application.  CodeSheriff watches your repositories for new or updated PRs,
