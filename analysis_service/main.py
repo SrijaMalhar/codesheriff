@@ -10,9 +10,10 @@ import google.generativeai as genai
 import httpx
 from fastapi import FastAPI, HTTPException
 from sqlalchemy.orm import Session
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from shared.config import GOOGLE_API_KEY, GEMINI_MODEL, COMMENT_SERVICE_URL, GITHUB_TOKEN
+from shared.config import COMMENT_SERVICE_URL, GEMINI_MODEL, GITHUB_TOKEN, GOOGLE_API_KEY
 from shared.database import ReviewLog, SessionLocal, create_tables
 from shared.models import CommentRequest, Finding, HealthResponse, ReviewRequest, ReviewResult, Severity
 
@@ -39,6 +40,12 @@ def _gh_headers():
     }
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.HTTPError),
+    reraise=True,
+)
 def fetch_pr_diff(owner, repo_name, pr_number):
     url = f"{GITHUB_API}/repos/{owner}/{repo_name}/pulls/{pr_number}"
     resp = httpx.get(url, headers={**_gh_headers(), "Accept": "application/vnd.github.v3.diff"}, timeout=30)
@@ -46,15 +53,29 @@ def fetch_pr_diff(owner, repo_name, pr_number):
     return resp.text
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.HTTPError),
+    reraise=True,
+)
 def fetch_pr_files(owner, repo_name, pr_number):
-    resp = httpx.get(f"{GITHUB_API}/repos/{owner}/{repo_name}/pulls/{pr_number}/files", headers=_gh_headers(), timeout=30)
+    resp = httpx.get(f"{GITHUB_API}/repos/{owner}/{repo_name}/pulls/{pr_number}/files",
+                     headers=_gh_headers(), timeout=30)
     resp.raise_for_status()
     return resp.json()
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.HTTPError),
+    reraise=False,
+)
 def fetch_file_content(owner, repo_name, path, ref):
     import base64
-    resp = httpx.get(f"{GITHUB_API}/repos/{owner}/{repo_name}/contents/{path}", headers=_gh_headers(), params={"ref": ref}, timeout=30)
+    resp = httpx.get(f"{GITHUB_API}/repos/{owner}/{repo_name}/contents/{path}",
+                     headers=_gh_headers(), params={"ref": ref}, timeout=30)
     if resp.status_code == 404:
         return None
     resp.raise_for_status()
@@ -77,8 +98,11 @@ def run_flake8(file_path, source_code):
                 continue
             try:
                 row, _col, code, text = parts
-                sev = Severity.ERROR if code.startswith(("E", "F")) else Severity.WARNING if code.startswith("W") else Severity.INFO
-                findings.append(Finding(file=file_path, line=int(row), severity=sev, suggestion=f"[{code}] {text.strip()}", source="flake8"))
+                sev = (Severity.ERROR if code.startswith(("E", "F"))
+                       else Severity.WARNING if code.startswith("W")
+                       else Severity.INFO)
+                findings.append(Finding(file=file_path, line=int(row), severity=sev,
+                                        suggestion=f"[{code}] {text.strip()}", source="flake8"))
             except (ValueError, IndexError):
                 continue
     except (subprocess.TimeoutExpired, FileNotFoundError) as exc:
@@ -86,6 +110,19 @@ def run_flake8(file_path, source_code):
     finally:
         Path(tmp_path).unlink(missing_ok=True)
     return findings
+
+
+@retry(
+    stop=stop_after_attempt(2),
+    wait=wait_exponential(multiplier=2, min=5, max=30),
+    retry=retry_if_exception_type(Exception),
+    reraise=False,
+)
+def _call_gemini(model, prompt):
+    return model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=4096),
+    )
 
 
 def run_gemini_review(diff):
@@ -107,7 +144,7 @@ Format:
 }}
 Severity: "error", "warning", or "info"."""
     try:
-        response = model.generate_content(prompt, generation_config=genai.types.GenerationConfig(temperature=0.2, max_output_tokens=4096))
+        response = _call_gemini(model, prompt)
         raw = response.text.strip()
         if raw.startswith("```"):
             raw = raw.split("```")[1]
